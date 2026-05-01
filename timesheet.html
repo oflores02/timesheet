@@ -21,7 +21,6 @@ h1 {
   font-weight: 900;
   color: #c8f04c;
   letter-spacing: -0.5px;
-  margin-bottom: 4px;
 }
 
 .top-row {
@@ -38,14 +37,12 @@ h1 {
   align-items: center;
   gap: 8px;
 }
-
 .rate-wrap label {
   font-size: 12px;
   color: #888;
   font-weight: 600;
   letter-spacing: 1px;
 }
-
 .rate-wrap input {
   background: #222;
   border: 1px solid #333;
@@ -58,7 +55,6 @@ h1 {
   text-align: right;
   font-family: inherit;
 }
-
 .rate-wrap input:focus { outline: none; border-color: #f0c84c; }
 
 .week-row {
@@ -67,7 +63,6 @@ h1 {
   gap: 10px;
   margin-bottom: 10px;
 }
-
 .week-row label {
   font-size: 11px;
   color: #888;
@@ -75,7 +70,6 @@ h1 {
   letter-spacing: 1px;
   text-transform: uppercase;
 }
-
 .week-row input {
   background: #222;
   border: 1px solid #333;
@@ -94,7 +88,21 @@ h1 {
 }
 .hint b { color: #f0c84c; font-weight: 600; }
 
-/* Day Cards */
+/* saved badge */
+.saved-badge {
+  display: inline-block;
+  font-size: 11px;
+  color: #4cf06e;
+  background: #1a2e1a;
+  border: 1px solid #2a4a2a;
+  border-radius: 20px;
+  padding: 2px 10px;
+  margin-bottom: 14px;
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+.saved-badge.show { opacity: 1; }
+
 .card {
   background: #1a1a1a;
   border: 1px solid #2a2a2a;
@@ -154,7 +162,6 @@ h1 {
   -webkit-appearance: none;
   appearance: none;
 }
-
 .field input:focus { outline: none; border-color: #666; }
 .field input.bad { border-color: #f04c4c !important; }
 
@@ -167,7 +174,6 @@ h1 {
 .card-foot .worked { color: #888; }
 .card-foot .errmsg { color: #f04c4c; }
 
-/* Summary */
 .summary {
   background: #1a1a1a;
   border: 1.5px solid #c8f04c;
@@ -204,14 +210,12 @@ h1 {
   padding-top: 10px;
   border-top: 2px solid #c8f04c;
 }
-
 .sum-total .lbl {
   font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }
-
 .sum-total .big {
   font-size: 26px;
   font-weight: 900;
@@ -219,9 +223,14 @@ h1 {
   letter-spacing: -0.5px;
 }
 
-/* Copy button */
+.btn-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  margin-bottom: 0;
+}
+
 .copy-btn {
-  width: 100%;
   background: #c8f04c;
   color: #111;
   border: none;
@@ -240,7 +249,20 @@ h1 {
 .copy-btn:active { background: #a8d030; }
 .copy-btn.ok { background: #4cf06e; }
 
-/* Toast */
+.reset-btn {
+  background: #222;
+  color: #888;
+  border: 1px solid #333;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 15px 16px;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.reset-btn:active { background: #2a2a2a; color: #f04c4c; border-color: #f04c4c; }
+
 .toast {
   position: fixed;
   bottom: 30px;
@@ -279,6 +301,8 @@ h1 {
 
 <p class="hint">Times: <b>8</b> or <b>8:30</b> &nbsp;|&nbsp; PM use 24hr: <b>17:00</b> = 5pm</p>
 
+<div class="saved-badge" id="savedBadge">✓ Saved</div>
+
 <div id="cards"></div>
 
 <div class="summary">
@@ -290,9 +314,10 @@ h1 {
   </div>
 </div>
 
-<button class="copy-btn" id="copyBtn" onclick="doCopy()">
-  &#x2398; COPY HOURS TEXT
-</button>
+<div class="btn-row">
+  <button class="copy-btn" id="copyBtn" onclick="doCopy()">&#x2398; COPY HOURS TEXT</button>
+  <button class="reset-btn" onclick="doReset()">RESET WEEK</button>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -304,14 +329,19 @@ var DAYS = [
   {k:'thu', name:'THU', s:'TH'}
 ];
 
-// Set monday
-var now = new Date();
-var wd = now.getDay();
-var diff = wd === 0 ? -6 : 1 - wd;
-var mon = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff);
-var mm = String(mon.getMonth()+1).padStart(2,'0');
-var dd = String(mon.getDate()).padStart(2,'0');
-document.getElementById('weekOf').value = mon.getFullYear() + '-' + mm + '-' + dd;
+var STORE_KEY = 'timesheet_v1';
+var saveTimer = null;
+
+// Set default monday
+function getMonday() {
+  var now = new Date();
+  var wd = now.getDay();
+  var diff = wd === 0 ? -6 : 1 - wd;
+  var mon = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff);
+  var mm = String(mon.getMonth()+1).padStart(2,'0');
+  var dd = String(mon.getDate()).padStart(2,'0');
+  return mon.getFullYear() + '-' + mm + '-' + dd;
+}
 
 // Build cards
 var container = document.getElementById('cards');
@@ -333,15 +363,93 @@ for (var i = 0; i < DAYS.length; i++) {
     '<div class="card-foot"><span class="worked" id="hrs-' + d.k + '"></span><span class="errmsg" id="err-' + d.k + '"></span></div>';
   container.appendChild(div);
   (function(dk) {
-    document.getElementById('in-'+dk).addEventListener('input', calc);
-    document.getElementById('out-'+dk).addEventListener('input', calc);
-    document.getElementById('lunch-'+dk).addEventListener('input', calc);
-    document.getElementById('loc-'+dk).addEventListener('input', calc);
+    document.getElementById('in-'+dk).addEventListener('input', onInput);
+    document.getElementById('out-'+dk).addEventListener('input', onInput);
+    document.getElementById('lunch-'+dk).addEventListener('input', onInput);
+    document.getElementById('loc-'+dk).addEventListener('input', onInput);
   })(d.k);
 }
 
-document.getElementById('rate').addEventListener('input', calc);
+document.getElementById('rate').addEventListener('input', onInput);
+document.getElementById('weekOf').addEventListener('input', onInput);
 
+// ── Storage ──────────────────────────────────────────
+function saveData() {
+  var data = {
+    rate: document.getElementById('rate').value,
+    weekOf: document.getElementById('weekOf').value,
+    days: {}
+  };
+  for (var i = 0; i < DAYS.length; i++) {
+    var k = DAYS[i].k;
+    data.days[k] = {
+      inn:   document.getElementById('in-'+k).value,
+      out:   document.getElementById('out-'+k).value,
+      lunch: document.getElementById('lunch-'+k).value,
+      loc:   document.getElementById('loc-'+k).value
+    };
+  }
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(data));
+    showSaved();
+  } catch(e) {}
+}
+
+function loadData() {
+  try {
+    var raw = localStorage.getItem(STORE_KEY);
+    if (!raw) {
+      document.getElementById('weekOf').value = getMonday();
+      return;
+    }
+    var data = JSON.parse(raw);
+    if (data.rate) document.getElementById('rate').value = data.rate;
+    if (data.weekOf) document.getElementById('weekOf').value = data.weekOf;
+    else document.getElementById('weekOf').value = getMonday();
+    if (data.days) {
+      for (var i = 0; i < DAYS.length; i++) {
+        var k = DAYS[i].k;
+        if (data.days[k]) {
+          document.getElementById('in-'+k).value    = data.days[k].inn   || '';
+          document.getElementById('out-'+k).value   = data.days[k].out   || '';
+          document.getElementById('lunch-'+k).value = data.days[k].lunch !== undefined ? data.days[k].lunch : '30';
+          document.getElementById('loc-'+k).value   = data.days[k].loc   || '';
+        }
+      }
+    }
+  } catch(e) {
+    document.getElementById('weekOf').value = getMonday();
+  }
+}
+
+function showSaved() {
+  var b = document.getElementById('savedBadge');
+  b.classList.add('show');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(function(){ b.classList.remove('show'); }, 2000);
+}
+
+function onInput() {
+  calc();
+  saveData();
+}
+
+function doReset() {
+  if (!confirm('Clear all this week\'s data?')) return;
+  for (var i = 0; i < DAYS.length; i++) {
+    var k = DAYS[i].k;
+    document.getElementById('in-'+k).value    = '';
+    document.getElementById('out-'+k).value   = '';
+    document.getElementById('lunch-'+k).value = '30';
+    document.getElementById('loc-'+k).value   = '';
+  }
+  document.getElementById('weekOf').value = getMonday();
+  saveData();
+  calc();
+  toast('Week cleared');
+}
+
+// ── Calc ──────────────────────────────────────────────
 function parseT(s) {
   if (!s) return null;
   s = s.trim().replace(/[^0-9:]/g,'');
@@ -378,8 +486,8 @@ function calc() {
 
   for (var i=0; i<DAYS.length; i++) {
     var d = DAYS[i];
-    var inv = document.getElementById('in-'+d.k).value;
-    var outv = document.getElementById('out-'+d.k).value;
+    var inv   = document.getElementById('in-'+d.k).value;
+    var outv  = document.getElementById('out-'+d.k).value;
     var lunch = parseInt(document.getElementById('lunch-'+d.k).value)||0;
     var payEl = document.getElementById('pay-'+d.k);
     var hrsEl = document.getElementById('hrs-'+d.k);
@@ -396,7 +504,6 @@ function calc() {
     if (!inv.trim() && !outv.trim()) continue;
 
     var inM = parseT(inv), outM = parseT(outv);
-
     if (inv.trim() && inM===null) { inEl.classList.add('bad'); errEl.textContent='Check time in'; continue; }
     if (outv.trim() && outM===null) { outEl.classList.add('bad'); errEl.textContent='Check time out'; continue; }
     if (inM!==null && outM!==null) {
@@ -419,10 +526,10 @@ function doCopy() {
   var lines = [], totalMins = 0;
   for (var i=0; i<DAYS.length; i++) {
     var d = DAYS[i];
-    var inv = document.getElementById('in-'+d.k).value;
-    var outv = document.getElementById('out-'+d.k).value;
+    var inv   = document.getElementById('in-'+d.k).value;
+    var outv  = document.getElementById('out-'+d.k).value;
     var lunch = parseInt(document.getElementById('lunch-'+d.k).value)||0;
-    var loc = document.getElementById('loc-'+d.k).value.trim();
+    var loc   = document.getElementById('loc-'+d.k).value.trim();
     var inM = parseT(inv), outM = parseT(outv);
     if (inM!==null && outM!==null && outM>inM) {
       totalMins += outM-inM-lunch;
@@ -462,6 +569,8 @@ function toast(msg) {
   setTimeout(function(){ t.classList.remove('on'); }, 2200);
 }
 
+// Init
+loadData();
 calc();
 </script>
 </body>
